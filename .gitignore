@@ -1,0 +1,6 @@
+# simple gitignore
+
+*.bak*
+*.o
+/.vscode
+/thing
