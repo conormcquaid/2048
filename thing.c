@@ -1,9 +1,10 @@
 #include <stdio.h>
-//#include <conio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <time.h>
+#include <errno.h>
 
 #define _ESC_ \x1b
 #define _CSI_ \x9b
@@ -60,13 +61,49 @@ int move_down(int cells[N_COLS][N_ROWS]);
 int move_left(int cells[N_COLS][N_ROWS]);
 int move_right(int cells[N_COLS][N_ROWS]);
 int getkey(void);
-void handle_key_press(void);
+int handle_key_press(void);
 void render(int cells[N_COLS][N_ROWS], int width, int height);
 void restore_cursor(void);
 int no_moves_left(void);
 int insert_new_tile(void);
 void debug_cell_print(void);
+void disable_cursor(void);
 
+
+/* termios code influenced by
+   "Build your own text editor"
+   https://viewsourcecode.org/snaptoken/kilo/index.html
+*/
+struct termios original_termios; // Store original terminal settings
+
+int die(const char* s){
+
+    perror(s);
+    exit(1);
+}
+
+void enable_raw_mode() {
+    struct termios raw;
+    if( -1 == tcgetattr(STDIN_FILENO, &original_termios)){ die("tcgetattr"); } // Save original settings
+    raw = original_termios; // Copy original settings to modify
+    raw.c_iflag &= (BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_oflag &= ~(OPOST);
+    raw.c_cflag |= (CS8);
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+
+    //timeout?
+    raw.c_cc[VMIN] = 0; //minimum bytes to read
+    raw.c_cc[VTIME] = 1; // tenths of a second to wait for a char
+
+    if(-1 == tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)){ die("tcsetattr raw"); };
+
+	disable_cursor();
+}
+
+void disable_raw_mode() {
+    
+    if(-1 == tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios)){ die("tcsetattr original"); }; // Restore original settings
+}
 
 int getkey(void) {
     int character;
@@ -102,6 +139,11 @@ void restore_cursor(void){
 
 }
 
+void disable_cursor(void){
+
+	printf("\x1B[?25l");
+}
+
 /************************************************
 
 render(int* cells, int width, int height)
@@ -115,12 +157,12 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 	int row,col,c;
 
 	printf( BORDER_COLOR );
-	printf("\nScore %d\n", g_score);
+	printf("\n\rScore %d\n\r", g_score);
 
 	//top row
 	printf( BORDER_COLOR "\u2554\u2550");
 	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
-	printf("\u2550\u2557\n");
+	printf("\u2550\u2557\n\r");
 
 	for(row = 0; row < height; row++){
 		//left wall
@@ -139,7 +181,7 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 		}
 
 		//right wall / left wall
-		printf(BORDER_COLOR " \u2551\n\u2551 ");
+		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
 
 		for(col = 0; col < width; col++){
 
@@ -155,7 +197,7 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 		}
 
 		//right wall / left wall
-		printf(BORDER_COLOR " \u2551\n\u2551 ");
+		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
 
 		for(col = 0; col < width; col++){
 
@@ -170,14 +212,16 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 		}
 
 		//right wall : end of row
-		printf(BORDER_COLOR " \u2551\n");
+		printf(BORDER_COLOR " \u2551\n\r");
 	}
 	//bottom row
-	printf("\u255A\u2550");
+	printf(BORDER_COLOR "\u255A\u2550");
 	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
 	printf("\u2550\u255D");
 
-	restore_cursor();
+	fflush(stdout);
+
+	//restore_cursor();
 }
 
 /***********************************************************************
@@ -337,7 +381,7 @@ int move_down(int cells[N_COLS][N_ROWS]){
 						cells[col][ dest_row + 1] ++; //increase by power of 2
 						cells[col][ dest_row] = 0;
 						n_moved++;
-						g_score += 2 << cells[col][ dest_row + 1] ;
+						g_score += 1 << cells[col][ dest_row + 1] ;
 					}
 				}
 
@@ -391,7 +435,7 @@ int move_up(int cells[N_COLS][N_ROWS]){
 						cells[col][ dest_row - 1] ++; //increase by power of 2
 						cells[col][dest_row] = 0;
 						n_moved++;
-						g_score += 2 << cells[col][ dest_row - 1];
+						g_score += 1 << cells[col][ dest_row - 1];
 					}
 				}
 
@@ -444,7 +488,7 @@ int move_left(int cells[N_COLS][N_ROWS]){
 						cells[dest_col - 1][row] ++; //increase by power of 2
 						cells[dest_col][row ] = 0;
 						n_moved++;
-						g_score += 2 << cells[dest_col - 1][row];
+						g_score += 1 << cells[dest_col - 1][row];
 					}
 				}
 
@@ -498,7 +542,7 @@ int move_right(int cells[N_COLS][N_ROWS]){
 						cells[dest_col][ row] = 0;
 						n_moved++;
 						debug_cell_print();
-						g_score += 2 << cells[dest_col + 1][ row];
+						g_score += 1 << cells[dest_col + 1][ row];
 					}
 				}
 
@@ -508,6 +552,37 @@ int move_right(int cells[N_COLS][N_ROWS]){
 	}
 	return n_moved;
 }
+
+char read_key(void){
+
+    int nread;
+    char c;
+    while(( nread = read(STDIN_FILENO, &c, 1)) != 1){
+        if( nread == -1 && errno != EAGAIN) die("read");
+    }
+	// xlate cursor keys to wasd
+    if( c == '\x1B'){
+        char seq[2];
+        if(read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1B';
+        if(read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1B';
+
+        if(seq[0] == '[' ){
+
+            switch(seq[1]){
+                case 'A': return 'w'; /* short cct switch */
+                case 'B': return 's';
+                case 'C': return 'd';
+                case 'D': return 'a';
+            }
+        }
+        // malformed ESC seq
+        return '\x1B';
+    }else{
+        //not ESC: default behavior
+        return c;
+    }
+}
+
 /***************************************
 
 handle_key_press()
@@ -519,7 +594,7 @@ or two or more tiles amalgmate into one (or the user quits)
 ***************************************************/
 
 
-void handle_key_press(void){
+int handle_key_press(void){
 	//printf("KEY\n");
 
 	int key, n_cells_moved = 0;
@@ -529,14 +604,16 @@ void handle_key_press(void){
 	//
 	while( (n_cells_moved == 0) && !valid_key ){
 
-		key = getkey();
+		//key = getkey();
+		key = read_key();
 		//n_cells_moved = 0;
 
 		switch(key){
 
-			case 0x1B:
-			 getkey();
-			 getkey();
+			case 0x1B:   /*  \x1B */
+			 getkey();   /* [ */
+			 getkey();   /* A|B|C|D */
+			 printf("Unwanted getkey\n\r");
 			 break;
 
 			case 'w':
@@ -580,6 +657,13 @@ void handle_key_press(void){
 		// printf("KEY:%d, moves:%d\n",key, n_cells_moved);
 	}//end while
 	// printf("KEY exit:%d\n", n_cells_moved);
+	return n_cells_moved;
+}
+
+void cleanup_and_exit() {
+    disable_raw_mode();
+    printf("\nExiting...\n");
+    exit(0); // Terminate the program
 }
 
 /*************************************************************************************************/
@@ -591,45 +675,29 @@ int main(int argc, char** argv){
 	//RNG go
 	srand( (unsigned)time(NULL));
 
-	// test no_moves_left
+	enable_raw_mode();
+    atexit(cleanup_and_exit); // Register cleanup function
 
-	// while(1){
-
-		// int r;
-
-		// for(int c = 0; c < 16; c++){
-
-			// board[c % N_COLS][c / N_COLS] = rand()%13 + 1;
-		// }
-		// r = rand()%16;
-
-		////cells[r % N_COLS][r / N_COLS] = 0;
-
-		// render( board, N_COLS, N_ROWS );
-
-		// printf("Moves left? : %d\n", no_moves_left() );
-
-		// getkey();
-	// }
 
 	// board initially contains 2 populated cells. Here's the first
+	insert_new_tile();
 	insert_new_tile();
 
 	g_score = 0;
 
 	for(;;){	// loop until game ends
 
-		if( !insert_new_tile() ){
-
-			// no remaining empty cells, so we must test if any valid moves remain
-
-			break;
-		}
 		render( board, N_COLS, N_ROWS );
 
-		//wait for valid key that results in some movement of a tile
-		handle_key_press();
+		if( handle_key_press() > 0){ //got a keypress that results in some movement of a tile
+			
+			if(!insert_new_tile()){
 
+				// no remaining empty cells, so we must test if any valid moves remain
+
+				if(no_moves_left()) break; // exit game loop
+			}
+		}
 	}
 
 	printf("\x1b[%dB", 1 + ( 3 * N_ROWS ) + 1);
