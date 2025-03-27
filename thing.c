@@ -18,6 +18,8 @@
 
 int board[N_COLS ][ N_ROWS];
 
+#define ESC "\x1b"
+
 #define SYM_YEL "\x1b[33m"
 #define SYM_GRN "\x1b[32m"
 #define SYM_RED "\x1b[31m"
@@ -37,7 +39,7 @@ typedef enum  { VK_NONE, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_QUIT } valid_key_
 int g_score;
 
 char* symbols[MAX_SYMBOL][2] = {
-	{"   ", SYM_YEL }, // 2^0
+	{"   ", SYM_YEL }, 
 	{" 2 ", SYM_YEL },
 	{" 4 ", SYM_YEL },
 	{" 8 ", SYM_GRN },
@@ -89,7 +91,7 @@ void enable_raw_mode() {
     raw.c_iflag &= (BRKINT | ICRNL | INPCK | ISTRIP | IXON);
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= (CS8);
-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN );//| ISIG); // keep ctrl+c as an option
 
     //timeout?
     raw.c_cc[VMIN] = 0; //minimum bytes to read
@@ -144,6 +146,9 @@ void disable_cursor(void){
 	printf("\x1B[?25l");
 }
 
+void cursor_to(int x, int y){
+	printf(ESC "[%d;%dH", x, y); // origin is at 1,1
+}
 /************************************************
 
 render(int* cells, int width, int height)
@@ -156,14 +161,26 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 
 	int row,col,c;
 
-	printf( BORDER_COLOR );
-	printf("\n\rScore %d\n\r", g_score);
+	printf(ESC "[2J"); // clear screen
+
+	cursor_to(1,1);
 
 	//top row
 	printf( BORDER_COLOR "\u2554\u2550");
 	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
-	printf("\u2550\u2557\n\r");
-
+	printf("\u2550\u2557");
+	//score line
+	cursor_to(2, 1);
+	printf( BORDER_COLOR );
+	printf("\u2551 Score: %d", g_score); cursor_to(2, 23);printf(" \u2551");
+	
+	// separator
+	cursor_to(3,1);
+	printf( BORDER_COLOR "\u2560\u2550");
+	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
+	printf("\u2550\u2563");
+	
+	cursor_to(4,1);
 	for(row = 0; row < height; row++){
 		//left wall
 		printf( "\u2551 ");
@@ -175,8 +192,8 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
-			printf( "%s", symbols[c][SYM_COLOR] );
-			printf("%s", c ? "\u250C\u2500\u2500\u2500\u2510" : "     ");
+			printf("%s", symbols[c][SYM_COLOR] );
+			printf("%s", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
 
 		}
 
@@ -248,6 +265,7 @@ int no_moves_left(void){
 			if(board[col][ row] == board[col][row+1] ){ return 0; }
 
 		}
+		//TODO: BUG HERE? col value implied
 		//last column test below
 		if(board[col][row] == board[col][row+1] ){ return 0; }
 	}
@@ -257,7 +275,7 @@ int no_moves_left(void){
 		// to the right
 		if(board[col][row] == board[col+1][row] ){ return 0; }
 	}
-	printf("No moves left\n");
+	//printf("No moves left\n");
 	return 1;
 
 }
@@ -276,7 +294,7 @@ int no_moves_left(void){
 
 int insert_new_tile(void){
 
-	int empty_cells[16];
+	int empty_cells[N_ROWS*N_COLS];
 	int n_empties;
 
 	int random = ((rand() % 10));
@@ -302,16 +320,18 @@ int insert_new_tile(void){
 
 		board[empty_cells[random] % N_COLS][empty_cells[random] / N_COLS] = new_tile;
 
+		--n_empties;
+
 		//printf("Inserting at %d, %d    (empties:%d)\n", random % 4, random / 4, n_empties);
 
 	}
 
 	// if inserted tile results in a deadlock, the game is also over
 
-	if(n_empties == 1 &&  no_moves_left() ){
+	if(no_moves_left() &&  n_empties == 0){
 
 		//signal end of game
-		printf("Died in no_moves_left\n");
+		//printf("Died in no_moves_left\n");
 		return 0;
 	}
 	return n_empties;
@@ -321,7 +341,7 @@ int insert_new_tile(void){
 void debug_cell_print(void){
 	for(int r = 0; r < N_ROWS; r++){
 
-		// printf("\n%2d,%2d,%2d,%2d", cells[0][ r],cells[1][ r],cells[2][ r],cells[3][r]);
+		 printf("\n%2d,%2d,%2d,%2d", board[0][ r],board[1][ r],board[2][ r],board[3][r]);
 	}
 	// printf("\n");
 }
@@ -337,8 +357,93 @@ void debug_cell_print(void){
 	Coded as separate functions for speed and laziness
 */
 
+/*
+  try a unified move function
+  it should be called for each row and each column, depending on direction
+  e.g. Call move_new(start, end, 0, 0) to work on the zeroth column
 
+  reduced code size at the expense of legibility and maintainability, so, NO
 
+int move_new(int cells[N_COLS][N_ROWS], int row_start, int row_end, int col_start, int col_end){
+
+	int total_score = 0, score = 0;
+	int Δrow = (row_start == row_end) 	? 0
+											: (row_start < row_end) ? 1 : -1;
+	int Δcol = (col_start == col_end) 	? 0
+											: (col_start < col_end) ? 1 : -1;
+
+	// remove gaps - score - remove gaps
+
+	if(!Δcol){
+		for( int row = row_start; row <= row_end - 1; row += Δrow ){
+			if((!cells[row + Δrow][col_start])){ //next cell empty?
+				cells[row + Δrow][col_start] = cells[row][col_start];//move
+				cells[row][col_start] = 0;
+			}
+		}
+		for( int row = row_start; row <= row_end - 1; row += Δrow ){
+			if((cells[row + Δrow][col_start]) == cells[row][col_start]){ //next cell equals current
+				score += (2 * cells[row][col_start]);
+				cells[row + Δrow][col_start] = score; //score
+				total_score += score;
+				cells[row][col_start] = 0;
+			}
+		}
+		for( int row = row_start; row <= row_end - 1; row += Δrow ){
+			if(!(cells[row + Δrow][col_start])){ //next cell empty?
+				cells[row + Δrow][col_start] = cells[row][col_start];//move
+				cells[row][col_start] = 0;
+			}
+		}
+	}else if(!Δrow){
+		for( int col = col_start; col <= col_end - 1; col += Δcol ){
+			if(!(cells[row_start][col + Δcol])){ //next cell empty?
+				cells[row_start][col + Δcol] = cells[row_start][col];//move
+				cells[row_start][col] = 0;
+			}
+		}
+		for( int col = col_start; col <= col_end - 1; col += Δcol ){
+			if((cells[row_start][col + Δcol]) == cells[row_start][col]){ //next cell equals current
+				score += (2 * cells[row_start][col]);
+				cells[row_start][col + Δcol] = score; //score
+				total_score += score;
+				cells[row_start][col] = 0;
+			}
+		}
+		for( int col = col_start; col <= col_end - 1; col += Δcol ){
+			if(!(cells[row_start][col + Δcol])){ //next cell empty?
+				cells[row_start][col + Δcol] = cells[row_start][col];//move
+				cells[row_start][col] = 0;
+			}
+		}
+	}else{
+		perror("move called with bad params");
+	}
+	return total_score;
+}
+
+int collapse_down(int cells[N_COLS][N_ROWS]){
+
+	for(int col = 0; col < N_COLS; col++){
+
+		for(int row = N_ROWS - 1; row >= 2; row --){
+
+			if( !cells[row][col] ){  			//if cell empty
+				for(int r = row; r >= 1; r--){ 	// move down all above
+					cells[r][col] = cells[r-1][col];
+				}
+			}
+		}
+	}
+	return 99;
+
+}*/
+
+/*
+	All four move options are reflections in either ascending/descending order or rows vs columns
+
+	Coded as separate functions for speed and laziness
+*/
 int move_down(int cells[N_COLS][N_ROWS]){
 
 	int n_moved = 0;
@@ -644,13 +749,13 @@ int handle_key_press(void){
 			case 'Q':
 			case 'q':
 			valid_key = VK_QUIT;
-			exit(0);
+				exit(0);
 			break;
 
 			default:
 			valid_key = VK_NONE;
 			n_cells_moved = 0;
-			printf("Ignoring -%c-\n", key);
+			//printf("Ignoring -%c-\n", key);
 			break;
 
 		}//end switch
@@ -662,28 +767,64 @@ int handle_key_press(void){
 
 void cleanup_and_exit() {
     disable_raw_mode();
-    printf("\nExiting...\n");
+	restore_cursor();
+    printf("\x1b[999C\x1b[999B");
     exit(0); // Terminate the program
 }
 
 /*************************************************************************************************/
 
 
+char* game_over = "\n\r\
+  ____    _    __  __ _____  \n\r\
+ / ___|  / \\  |  \\/  | ____| \n\r\
+| |  _  / _ \\ | |\\/| |  _|   \n\r\
+| |_| |/ ___ \\| |  | | |___  \n\r\
+ \\____/_/   \\_\\_|  |_|_____| \n\r\
+   _____     _______ ____   \n\r\
+  / _ \\ \\   / / ____|  _ \\  \n\r\
+ | | | \\ \\ / /|  _| | |_) | \n\r\
+ | |_| |\\ V / | |___|  _ <  \n\r\
+  \\___/  \\_/  |_____|_| \\_\\ \n\r\
+";
 
-int main(int argc, char** argv){
+char* title = "\
+  ____   ___  _  _    ___  \n\r\
+ |___ \\ / _ \\| || |  ( _ ) \n\r\
+   __) | | | | || |_ / _ \\ \n\r\
+  / __/| |_| |__   _| (_) |\n\r\
+ |_____|\\___/   |_|  \\___/ \n\r\
+";
 
-	//RNG go
-	srand( (unsigned)time(NULL));
+char * you_win = "\
+  __   _____  _   _ \n\r\
+  \\ \\ / / _ \\| | | |\n\r\
+   \\ V / | | | | | |\n\r\
+    | || |_| | |_| |\n\r\
+    |_| \\___/ \\___/ \n\r\
+                  \n\r\
+          _____ _   _ \n\r\
+\\ \\      / /_ _| \\ | |\n\r\
+ \\ \\ /\\ / / | ||  \\| |\n\r\
+  \\ V  V /  | || |\\  |\n\r\
+   \\_/\\_/  |___|_| \\_|\n\r\
+";
 
-	enable_raw_mode();
-    atexit(cleanup_and_exit); // Register cleanup function
+int play_2048(void){
+	
+	int g_score = 0;
+	
+	// show splash
+	printf("%s", title);
+	printf("\n\nDo you want to play a game?\n");
+	// wait for ANY key
+	int resp = read_key();
+	if(resp == 'N' || resp == 'n'){ return 0; }
 
 
-	// board initially contains 2 populated cells. Here's the first
+	// board initially contains 2 populated cells. 
 	insert_new_tile();
 	insert_new_tile();
-
-	g_score = 0;
 
 	for(;;){	// loop until game ends
 
@@ -695,17 +836,29 @@ int main(int argc, char** argv){
 
 				// no remaining empty cells, so we must test if any valid moves remain
 
-				if(no_moves_left()) break; // exit game loop
+				if(no_moves_left()) {
+					render( board, N_COLS, N_ROWS );// show final state	
+					break; // exit game loop
+				}
 			}
+		}else{
+			printf("no move possible\n");
 		}
 	}
+	printf("%s", game_over);
 
-	printf("\x1b[%dB", 1 + ( 3 * N_ROWS ) + 1);
+	return g_score;
+}
 
-	printf("\nGAME OVER!\n");
-	//
-	// a score would be nice
-	//
+int main(int argc, char** argv){
+
+	//RNG go
+	srandom( (unsigned)time(NULL));
+
+	enable_raw_mode();
+    atexit(cleanup_and_exit); // Register cleanup function
+
+	play_2048();	
 
 	return 0;
 }

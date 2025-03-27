@@ -10,9 +10,10 @@ Future implementation will be in STM32F072 Cortex M0 virtual serial port (CDC Cl
 
 #To Do?
 - Use cursor movement to repaint in place
-- Tidy up 'Game Over' behavior
 - fix cmake
-- animate collisions go game is less 'surprising'
+- animate collisions so game is less 'surprising'
 - maybe add in some timing delay between collision/merger/spawning to enhance UX
-
-
+- offer player opportunity to end game at 2048/other milestone
+- change printf to write so game could be played over ssh, telnet, etc.
+- more color diffferentiation of tiles
+- add Undo capability by caching last game state (game struct)
