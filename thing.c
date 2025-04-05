@@ -5,6 +5,7 @@
 #include <termios.h>
 #include <time.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #define _ESC_ \x1b
 #define _CSI_ \x9b
@@ -16,8 +17,6 @@
 #define N_COLS 4
 #define N_ROWS 4
 
-int board[N_COLS ][ N_ROWS];
-
 #define ESC "\x1b"
 
 #define SYM_YEL "\x1b[33m"
@@ -27,7 +26,7 @@ int board[N_COLS ][ N_ROWS];
 #define SYM_B_GRN "\x1b[92m"
 #define SYM_B_RED "\x1b[91m"
 
-#define MAX_SYMBOL 17
+#define MAX_SYMBOL 19
 #define SYM_LEGEND 0
 #define SYM_COLOR 1
 
@@ -36,7 +35,18 @@ int board[N_COLS ][ N_ROWS];
 
 typedef enum  { VK_NONE, VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT, VK_QUIT } valid_key_t;
 
-int g_score;
+struct game{
+
+   int score;
+   int board[N_COLS ][ N_ROWS];
+   bool won;
+   int max_cell;
+   int width;
+   int height;
+   
+}game;
+
+
 
 char* symbols[MAX_SYMBOL][2] = {
 	{"   ", SYM_YEL }, 
@@ -55,16 +65,18 @@ char* symbols[MAX_SYMBOL][2] = {
 	{"8K ", SYM_B_GRN },
 	{"16K", SYM_B_GRN },
 	{"32K", SYM_B_RED },
+	{"64K", SYM_B_RED },
+	{" \u221e ", SYM_B_RED }, /* infinity symbol: v. unlikely for a human to reach 128K */
 	{"err", SYM_B_RED }
 };
 
-int move_up(int cells[N_COLS][N_ROWS]);
-int move_down(int cells[N_COLS][N_ROWS]);
-int move_left(int cells[N_COLS][N_ROWS]);
-int move_right(int cells[N_COLS][N_ROWS]);
+int move_up(void);
+int move_down(void);
+int move_left(void);
+int move_right(void);
 int getkey(void);
 int handle_key_press(void);
-void render(int cells[N_COLS][N_ROWS], int width, int height);
+void render();
 void restore_cursor(void);
 int no_moves_left(void);
 int insert_new_tile(void);
@@ -151,13 +163,13 @@ void cursor_to(int x, int y){
 }
 /************************************************
 
-render(int* cells, int width, int height)
+render(void)
 
 DIsplay the game board
 
 ************************************************/
 
-void render(int cells[N_COLS][N_ROWS], int width, int height){
+void render(void){
 
 	int row,col,c;
 
@@ -167,28 +179,28 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 
 	//top row
 	printf( BORDER_COLOR "\u2554\u2550");
-	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
+	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
 	printf("\u2550\u2557");
 	//score line
 	cursor_to(2, 1);
 	printf( BORDER_COLOR );
-	printf("\u2551 Score: %d", g_score); cursor_to(2, 23);printf(" \u2551");
+	printf("\u2551 Score: %d", game.score); cursor_to(2, 23);printf(" \u2551");
 	
 	// separator
 	cursor_to(3,1);
 	printf( BORDER_COLOR "\u2560\u2550");
-	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
+	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
 	printf("\u2550\u2563");
 	
 	cursor_to(4,1);
-	for(row = 0; row < height; row++){
+	for(row = 0; row < game.height; row++){
 		//left wall
 		printf( "\u2551 ");
 
-		for(col = 0; col < width; col++){
+		for(col = 0; col < game.width; col++){
 
 			// cache ccell value & validate
-			c = cells[col][row];
+			c = game.board[col][row];
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
@@ -200,10 +212,10 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 		//right wall / left wall
 		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
 
-		for(col = 0; col < width; col++){
+		for(col = 0; col < game.width; col++){
 
 			// cache ccell value & validate
-			c = cells[col][row];
+			c = game.board[col][row];
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
@@ -216,14 +228,14 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 		//right wall / left wall
 		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
 
-		for(col = 0; col < width; col++){
+		for(col = 0; col < game.width; col++){
 
 			// cache cell value & validate
-			c = cells[col][row];
+			c = game.board[col][row];
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
-			printf( "%s", symbols[c][SYM_COLOR] );
+			printf(ESC  "[7m%s" ESC "[27m", symbols[c][SYM_COLOR] );
 			printf("%s", c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
 
 		}
@@ -233,7 +245,7 @@ void render(int cells[N_COLS][N_ROWS], int width, int height){
 	}
 	//bottom row
 	printf(BORDER_COLOR "\u255A\u2550");
-	for(col = 0; col < width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
+	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
 	printf("\u2550\u255D");
 
 	fflush(stdout);
@@ -260,20 +272,20 @@ int no_moves_left(void){
 
 		for( col = 0; col < N_COLS-1; col++){
 			// to the right
-			if(board[col][ row] == board[col+1][row] ){ return 0; }
+			if(game.board[col][ row] == game.board[col+1][row] ){ return 0; }
 			// and below
-			if(board[col][ row] == board[col][row+1] ){ return 0; }
+			if(game.board[col][ row] == game.board[col][row+1] ){ return 0; }
 
 		}
 		//TODO: BUG HERE? col value implied
 		//last column test below
-		if(board[col][row] == board[col][row+1] ){ return 0; }
+		if(game.board[col][row] == game.board[col][row+1] ){ return 0; }
 	}
 
 	// last row
 	for( col = 0; col < N_COLS-1; col++){
 		// to the right
-		if(board[col][row] == board[col+1][row] ){ return 0; }
+		if(game.board[col][row] == game.board[col+1][row] ){ return 0; }
 	}
 	//printf("No moves left\n");
 	return 1;
@@ -306,7 +318,7 @@ int insert_new_tile(void){
 	for(int col = 0; col < N_COLS ; col++){
 		for(int row = 0; row < N_ROWS; row++){
 
-			if(board[col][row] == 0){
+			if(game.board[col][row] == 0){
 				empty_cells[n_empties] = col + row * N_COLS;
 				n_empties++;
 			}
@@ -318,7 +330,7 @@ int insert_new_tile(void){
 		// drop new_tile into random slot
 		random = ((rand() % n_empties));
 
-		board[empty_cells[random] % N_COLS][empty_cells[random] / N_COLS] = new_tile;
+		game.board[empty_cells[random] % N_COLS][empty_cells[random] / N_COLS] = new_tile;
 
 		--n_empties;
 
@@ -341,7 +353,7 @@ int insert_new_tile(void){
 void debug_cell_print(void){
 	for(int r = 0; r < N_ROWS; r++){
 
-		 printf("\n%2d,%2d,%2d,%2d", board[0][ r],board[1][ r],board[2][ r],board[3][r]);
+		 printf("\n%2d,%2d,%2d,%2d", game.board[0][ r],game.board[1][ r],game.board[2][ r],game.board[3][r]);
 	}
 	// printf("\n");
 }
@@ -352,9 +364,7 @@ void debug_cell_print(void){
 	in : array of game cells. this will be modified if a legal move is made
 	out: the number of cells moved. Returning zero indicates that no move was made
 
-	All four move options are reflections in either ascending/descending order or rows vs columns
-
-	Coded as separate functions for speed and laziness
+   More complex than necessary?
 */
 
 /*
@@ -444,7 +454,7 @@ int collapse_down(int cells[N_COLS][N_ROWS]){
 
 	Coded as separate functions for speed and laziness
 */
-int move_down(int cells[N_COLS][N_ROWS]){
+int move_down(void){
 
 	int n_moved = 0;
 
@@ -457,21 +467,21 @@ int move_down(int cells[N_COLS][N_ROWS]){
 		for(int row = N_ROWS - 2; row >= 0; row--){
 
 			// is cell not empty
-			if(cells[col][ row] ){
+			if(game.board[col][ row] ){
 
 				// printf("D:Non empty cell at(%d,%d)\n", col, row);debug_cell_print();
 
 				// first check if there are empty cells in direction of motion
 				int dest_row = row;
-				while( dest_row < (N_ROWS-1) && !cells[col][ dest_row + 1]) {
+				while( dest_row < (N_ROWS-1) && !game.board[col][ dest_row + 1]) {
 
 					dest_row ++;
 				}
 				if(dest_row != row){
 					//move cell
 					// printf("D:moving (%d,%d) to (%d,%d)\n",col,row,col,dest_row);
-					cells[col][ dest_row] = cells[col][ row];
-					cells[col][ row] = 0;
+					game.board[col][ dest_row] = game.board[col][ row];
+					game.board[col][ row] = 0;
 					n_moved++;
 				}
 
@@ -480,13 +490,14 @@ int move_down(int cells[N_COLS][N_ROWS]){
 				if( !smush && dest_row < N_ROWS - 1 ){
 					// printf("D:smush test (%d,%d),(%d,%d)\n",col,dest_row,col,dest_row+1);
 
-					if(cells[col][ dest_row] == cells[col][ dest_row + 1] ){
+					if(game.board[col][ dest_row] == game.board[col][ dest_row + 1] ){
 						// printf("D:smush to(%d,%d)\n", col, dest_row+1);
 						smush++;
-						cells[col][ dest_row + 1] ++; //increase by power of 2
-						cells[col][ dest_row] = 0;
+						game.board[col][ dest_row + 1] ++; //increase by power of 2
+						
+						game.board[col][ dest_row] = 0;
 						n_moved++;
-						g_score += 1 << cells[col][ dest_row + 1] ;
+						game.score += 1 << game.board[col][ dest_row + 1] ;
 					}
 				}
 
@@ -498,7 +509,7 @@ int move_down(int cells[N_COLS][N_ROWS]){
 }
 
 
-int move_up(int cells[N_COLS][N_ROWS]){
+int move_up(void){
 
 	int n_moved = 0;
 
@@ -511,21 +522,21 @@ int move_up(int cells[N_COLS][N_ROWS]){
 		for(int row = 1; row < N_ROWS; row++){
 
 			// is cell not empty
-			if(cells[col][ row] ){
+			if(game.board[col][ row] ){
 
 				// printf("U:Non empty cell at(%d,%d)\n", col, row);debug_cell_print();
 
 				// first check if there are empty cells in direction of motion
 				int dest_row = row;
-				while( dest_row > 0 && !cells[col][ dest_row - 1]) {
+				while( dest_row > 0 && !game.board[col][ dest_row - 1]) {
 
 					dest_row --;
 				}
 				if(dest_row != row){
 					//move cell
 					// printf("u:moving (%d,%d) to (%d,%d)\n",col,row,col,dest_row);
-					cells[col][ dest_row] = cells[col][ row];
-					cells[col][ row] = 0;
+					game.board[col][ dest_row] = game.board[col][ row];
+					game.board[col][ row] = 0;
 					n_moved++;
 				}
 
@@ -534,13 +545,13 @@ int move_up(int cells[N_COLS][N_ROWS]){
 				if( !smush && dest_row > 0){
 					// printf("U:smush test (%d,%d),(%d,%d)\n",col,dest_row,col,dest_row-1);
 
-					if(cells[col][ dest_row] == cells[col][dest_row - 1] ){
+					if(game.board[col][ dest_row] == game.board[col][dest_row - 1] ){
 						// printf("U:smush to(%d,%d)\n", col, dest_row-1);
 						smush++;
-						cells[col][ dest_row - 1] ++; //increase by power of 2
-						cells[col][dest_row] = 0;
+						game.board[col][ dest_row - 1] ++; //increase by power of 2
+						game.board[col][dest_row] = 0;
 						n_moved++;
-						g_score += 1 << cells[col][ dest_row - 1];
+						game.score += 1 << game.board[col][ dest_row - 1];
 					}
 				}
 
@@ -551,7 +562,7 @@ int move_up(int cells[N_COLS][N_ROWS]){
 	return n_moved;
 }
 
-int move_left(int cells[N_COLS][N_ROWS]){
+int move_left(void){
 
 	int n_moved = 0;
 
@@ -564,21 +575,21 @@ int move_left(int cells[N_COLS][N_ROWS]){
 		for(int col = 1; col < N_COLS; col++){
 
 			// is cell not empty
-			if(cells[col][ row] ){
+			if(game.board[col][ row] ){
 
 				// printf("L:Non empty cell at(%d,%d)\n", col, row);debug_cell_print();
 
 				// first check if there are empty cells in direction of motion
 				int dest_col = col;
-				while( dest_col > 0 && !cells[dest_col - 1][ row]) {
+				while( dest_col > 0 && !game.board[dest_col - 1][ row]) {
 
 					dest_col --;
 				}
 				if(dest_col != col){
 					//move cell
 					// printf("L:moving (%d,%d) to (%d,%d)\n",col,row,dest_col,row);
-					cells[dest_col][ row] = cells[col][ row];
-					cells[col][ row] = 0;
+					game.board[dest_col][ row] = game.board[col][ row];
+					game.board[col][ row] = 0;
 					n_moved++;
 				}
 
@@ -587,13 +598,13 @@ int move_left(int cells[N_COLS][N_ROWS]){
 				if( !smush && dest_col > 0){
 					// printf("L:smush test (%d,%d),(%d,%d)\n",dest_col,row,dest_col-1,row);
 
-					if( cells[dest_col][ row] == cells[dest_col - 1][ row] ){
+					if( game.board[dest_col][ row] == game.board[dest_col - 1][ row] ){
 						// printf("L:smush to(%d,%d)\n", dest_col-1, row);
 						smush++;
-						cells[dest_col - 1][row] ++; //increase by power of 2
-						cells[dest_col][row ] = 0;
+						game.board[dest_col - 1][row] ++; //increase by power of 2
+						game.board[dest_col][row ] = 0;
 						n_moved++;
-						g_score += 1 << cells[dest_col - 1][row];
+						game.score += 1 << game.board[dest_col - 1][row];
 					}
 				}
 
@@ -604,7 +615,7 @@ int move_left(int cells[N_COLS][N_ROWS]){
 	return n_moved;
 }
 
-int move_right(int cells[N_COLS][N_ROWS]){
+int move_right(void){
 
 	int n_moved = 0;
 
@@ -617,21 +628,21 @@ int move_right(int cells[N_COLS][N_ROWS]){
 		for(int col = N_COLS-2; col >=0; col--){
 
 			// is cell not empty
-			if(cells[col][ row] ){
+			if(game.board[col][ row] ){
 
 				// printf("R:Non empty cell at(%d,%d)\n", col, row);debug_cell_print();
 
 				// first check if there are empty cells in direction of motion
 				int dest_col = col;
-				while( dest_col < (N_COLS-1) && !cells[dest_col + 1][ row]) {
+				while( dest_col < (N_COLS-1) && !game.board[dest_col + 1][ row]) {
 
 					dest_col ++;
 				}
 				if(dest_col != col){
 					//move cell
 					// printf("R:moving (%d,%d) to (%d,%d)\n",col,row,dest_col,row);
-					cells[dest_col][ row] = cells[col][ row];
-					cells[col][ row] = 0;
+					game.board[dest_col][ row] = game.board[col][ row];
+					game.board[col][ row] = 0;
 					n_moved++;
 				}
 
@@ -640,20 +651,18 @@ int move_right(int cells[N_COLS][N_ROWS]){
 				if( !smush && dest_col  < N_COLS - 1){
 					// printf("R:smush test (%d,%d),(%d,%d)\n",dest_col, row, dest_col+1, row);
 
-					if(cells[dest_col][ row] == cells[dest_col + 1][ row] ){
+					if(game.board[dest_col][ row] == game.board[dest_col + 1][ row] ){
 						// printf("R:smush to(%d,%d)\n", dest_col+1, row);
 						smush++;
-						cells[dest_col + 1][ row] ++; //increase by power of 2
-						cells[dest_col][ row] = 0;
+						game.board[dest_col + 1][ row] ++; //increase by power of 2
+						game.board[dest_col][ row] = 0;
 						n_moved++;
 						debug_cell_print();
-						g_score += 1 << cells[dest_col + 1][ row];
+						game.score += 1 << game.board[dest_col + 1][ row];
 					}
 				}
-
 			}
 		}
-
 	}
 	return n_moved;
 }
@@ -724,24 +733,24 @@ int handle_key_press(void){
 			case 'w':
 			case 'W':
 			valid_key = VK_UP;
-			n_cells_moved = move_up( board );
+			n_cells_moved = move_up();
 			break;
 
 			case 'a':
 			case 'A':
-			n_cells_moved = move_left( board );
+			n_cells_moved = move_left();
 			valid_key = VK_LEFT;
 			break;
 
 			case 's':
 			case 'S':
 			valid_key = VK_DOWN;
-			n_cells_moved = move_down( board );
+			n_cells_moved = move_down();
 			break;
 
 			case 'd':
 			case 'D':
-			n_cells_moved = move_right( board );
+			n_cells_moved = move_right();
 			valid_key = VK_RIGHT;
 
 			break;
@@ -812,11 +821,11 @@ char * you_win = "\
 
 int play_2048(void){
 	
-	int g_score = 0;
+	game.score = 0, game.won = false, game.max_cell = 0, game.width = N_COLS, game.height = N_ROWS;
 	
 	// show splash
-	printf("%s", title);
-	printf("\n\nDo you want to play a game?\n");
+	printf("%s\n\nDo you want to play a game?\n", title);
+	
 	// wait for ANY key
 	int resp = read_key();
 	if(resp == 'N' || resp == 'n'){ return 0; }
@@ -828,7 +837,7 @@ int play_2048(void){
 
 	for(;;){	// loop until game ends
 
-		render( board, N_COLS, N_ROWS );
+		render();
 
 		if( handle_key_press() > 0){ //got a keypress that results in some movement of a tile
 			
@@ -837,7 +846,7 @@ int play_2048(void){
 				// no remaining empty cells, so we must test if any valid moves remain
 
 				if(no_moves_left()) {
-					render( board, N_COLS, N_ROWS );// show final state	
+					render();// show final state	
 					break; // exit game loop
 				}
 			}
@@ -847,7 +856,7 @@ int play_2048(void){
 	}
 	printf("%s", game_over);
 
-	return g_score;
+	return 0;
 }
 
 int main(int argc, char** argv){
@@ -856,7 +865,7 @@ int main(int argc, char** argv){
 	srandom( (unsigned)time(NULL));
 
 	enable_raw_mode();
-    atexit(cleanup_and_exit); // Register cleanup function
+	atexit(cleanup_and_exit); // Register cleanup function
 
 	play_2048();	
 
