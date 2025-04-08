@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 #define _ESC_ \x1b
 #define _CSI_ \x9b
@@ -47,7 +48,7 @@ struct game{
    int     max_cell; // player's progress, highest tile reached
    int     width;    // N_COLS
    int     height;   // N_ROWS
-   int     logfile;  // fh for logging
+   FILE*   logfile;  // fh for logging
    
 }game;
 
@@ -94,6 +95,25 @@ int no_moves_left(void);
 int insert_new_tile(void);
 void debug_cell_print(void);
 void disable_cursor(void);
+
+#define f_out stdout
+
+int ffsprintf(FILE* fh, const char* fmt, ...){
+
+	static char persist_buffer[1024];
+	int ret;
+	va_list args;
+	va_start( args, fmt );
+	/*check return!*/vsnprintf(persist_buffer,1024, fmt, args );
+	ret = fprintf(fh, "%s", persist_buffer );
+	if(NULL != game.logfile){ 
+		ret = fprintf(game.logfile, "%s", persist_buffer); //fmt, args );
+		fflush(game.logfile);
+	}
+	va_end( args );
+	fflush(fh);
+	return ret;
+}
 
 
 /* termios code influenced by
@@ -159,32 +179,21 @@ void restore_cursor(void){
 	int width = 2 + ( 5 * N_COLS ) + 2;
 	int height = 1 + ( 3 * N_ROWS ) + 1 +1; // zero backs up 1 line
 
-	printf("\x1b[%dD", width); // cursor left
-	printf("\x1b[%dA", height); // cursor up
+	ffsprintf(f_out, "\x1b[%dD", width); // cursor left
+	ffsprintf(f_out, "\x1b[%dA", height); // cursor up
 
 
 }
 
 void disable_cursor(void){
 
-	printf("\x1B[?25l");
+	ffsprintf(f_out, "\x1B[?25l");
 }
 
 void cursor_to(int x, int y){
-	printf(ESC "[%d;%dH", x, y); // origin is at 1,1
+	ffsprintf(f_out, ESC "[%d;%dH", x, y); // origin is at 1,1
 
 
-}
-
-
-int ffsprintf(FILE* fh, const char* tag, const char* fmt, ...){
-
-	va_list args;
-	va_start( args, fmt );
-	//vsprintf(persist_buffer, fmt, args );
-	fprintf(stdout, fmt, args );
-	if(game.logfile) fprintf(game.logfile, fmt, args );
-	va_end( args );
 }
 
 /************************************************
@@ -200,29 +209,30 @@ void render(void){
 	int row,col,c;
 	bool inv = false;
 
-	printf(ESC "[2J"); // clear screen
+	ffsprintf(f_out, ESC "[2J"); // clear screen
 
 	cursor_to(1,1);
 
 	//top row
-	printf( BORDER_COLOR "\u2554\u2550");
-	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
-	printf("\u2550\u2557");
+	ffsprintf(f_out,  BORDER_COLOR "\u2554\u2550");
+	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	ffsprintf(f_out, "\u2550\u2557");
 	//score line
 	cursor_to(2, 1);
-	printf( BORDER_COLOR );
-	printf("\u2551" ESC "[7mScore: %d" ESC "[m", game.score); cursor_to(2, 23);printf(" \u2551");
+	ffsprintf(f_out,  BORDER_COLOR );
+	//ffsprintf(f_out, "\u2551" ESC "[7mScore: %d" ESC "[m", game.score); cursor_to(2, 23);ffsprintf(f_out, " \u2551");
+	ffsprintf(f_out, "\u2551 Score: %d", game.score); cursor_to(2, 23);ffsprintf(f_out, " \u2551");
 	
 	// separator
 	cursor_to(3,1);
-	printf( BORDER_COLOR "\u2560\u2550");
-	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
-	printf("\u2550\u2563");
+	ffsprintf(f_out,  BORDER_COLOR "\u2560\u2550");
+	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	ffsprintf(f_out, "\u2550\u2563");
 	
 	cursor_to(4,1);
 	for(row = 0; row < game.height; row++){
 		//left wall
-		printf( "\u2551 ");
+		ffsprintf(f_out,  "\u2551 ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -234,17 +244,17 @@ void render(void){
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
-			printf("%s", symbols[c][SYM_COLOR] );
+			ffsprintf(f_out, "%s", symbols[c][SYM_COLOR] );
 			//if(inv){
-			//	printf(ESC "[7m%s" ESC "[m", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
+			//	ffsprintf(f_out, ESC "[7m%s" ESC "[m", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
 			//}else{
-				printf("%s", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
+				ffsprintf(f_out, "%s", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
 			//}
 
 		}
 
 		//right wall / left wall
-		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
+		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r\u2551 ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -257,23 +267,23 @@ void render(void){
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
 			char* n = c ? "\u2502" : " ";
-			printf( "%s", symbols[c][SYM_COLOR]);
+			ffsprintf(f_out,  "%s", symbols[c][SYM_COLOR]);
 			// if(inv){
-			// 	printf(	ESC "[7m%s%s%s" ESC "[m", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
+			// 	ffsprintf(f_out, 	ESC "[7m%s%s%s" ESC "[m", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
 			// }else{
-			// 	printf(	"%s%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
+			// 	ffsprintf(f_out, 	"%s%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
 			// }
 
 			if(inv){
-				printf(	"%s" ESC "[7m%s" ESC "[m%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", symbols[c][SYM_COLOR], n);
+				ffsprintf(f_out, 	"%s" ESC "[7m%s" ESC "[m%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", symbols[c][SYM_COLOR], n);
 			}else{
-				printf(	"%s%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
+				ffsprintf(f_out, 	"%s%s%s", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
 			}
 
 		}
 
 		//right wall / left wall
-		printf(BORDER_COLOR " \u2551\n\r\u2551 ");
+		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r\u2551 ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -285,22 +295,22 @@ void render(void){
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
-			printf( "%s" , symbols[c][SYM_COLOR] );
+			ffsprintf(f_out,  "%s" , symbols[c][SYM_COLOR] );
 			//if(inv){
-			//	printf(	ESC "[7m%s" ESC "[m",  c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
+			//	ffsprintf(f_out, 	ESC "[7m%s" ESC "[m",  c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
 			//}else{
-				printf("%s", c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
+				ffsprintf(f_out, "%s", c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
 			//}
 
 		}
 
 		//right wall : end of row
-		printf(BORDER_COLOR " \u2551\n\r");
+		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r");
 	}
 	//bottom row
-	printf(BORDER_COLOR "\u255A\u2550");
-	for(col = 0; col < game.width; col++){ printf("\u2550\u2550\u2550\u2550\u2550"); }
-	printf("\u2550\u255D");
+	ffsprintf(f_out, BORDER_COLOR "\u255A\u2550");
+	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	ffsprintf(f_out, "\u2550\u255D");
 
 	// for cell in board: uninvert
 	// for(col = 0; col < game.width; col++){
@@ -333,22 +343,22 @@ int no_moves_left(void){
 
 		for( col = 0; col < N_COLS-1; col++){
 			// to the right
-			if( (~SMUSHED && game.board[col][ row]) == (~SMUSHED && game.board[col+1][row])){ return 0; }
+			if( (~SMUSHED & game.board[col][ row]) == (~SMUSHED & game.board[col+1][row])){ return 0; }
 			// and below
-			if( (~SMUSHED && game.board[col][ row]) == (~SMUSHED && game.board[col][row+1]) ){ return 0; }
+			if( (~SMUSHED & game.board[col][ row]) == (~SMUSHED & game.board[col][row+1]) ){ return 0; }
 
 		}
 		//TODO: BUG HERE? col value implied
 		//last column test below
-		if((~SMUSHED && game.board[col][row]) == (~SMUSHED && game.board[col][row+1]) ){ return 0; }
+		if((~SMUSHED & game.board[col][row]) == (~SMUSHED & game.board[col][row+1]) ){ return 0; }
 	}
 
 	// last row
 	for( col = 0; col < N_COLS-1; col++){
 		// to the right
-		if((~SMUSHED && game.board[col][row]) == (~SMUSHED && game.board[col+1][row]) ){ return 0; }
+		if((~SMUSHED & game.board[col][row]) == (~SMUSHED & game.board[col+1][row]) ){ return 0; }
 	}
-	//printf("No moves left\n");
+	//ffsprintf(f_out, "No moves left\n");
 	return 1;
 
 }
@@ -395,16 +405,16 @@ int insert_new_tile(void){
 
 		--n_empties;
 
-		//printf("Inserting at %d, %d    (empties:%d)\n", random % 4, random / 4, n_empties);
+		ffsprintf(f_out, "Inserting at %d, %d    (empties:%d)\n", random % 4, random / 4, n_empties);
 
-	}
+	}else{ // TODO:  logic?
 
 	// if inserted tile results in a deadlock, the game is also over
 
-	if(no_moves_left() &&  n_empties == 0){
-
+	//if(no_moves_left() &&  n_empties == 0){
+		if(no_moves_left())
 		//signal end of game
-		//printf("Died in no_moves_left\n");
+		ffsprintf(f_out, "Died in no_moves_left\n");
 		return 0;
 	}
 	return n_empties;
@@ -414,9 +424,9 @@ int insert_new_tile(void){
 void debug_cell_print(void){
 	for(int r = 0; r < N_ROWS; r++){
 
-		 printf("\n%2d,%2d,%2d,%2d", game.board[0][ r],game.board[1][ r],game.board[2][ r],game.board[3][r]);
+		 ffsprintf(f_out, "\n%2d,%2d,%2d,%2d", game.board[0][ r],game.board[1][ r],game.board[2][ r],game.board[3][r]);
 	}
-	// printf("\n");
+	// ffsprintf(f_out, "\n");
 }
 
 /******************************************************************************************/
@@ -557,7 +567,8 @@ int remove_gaps(uint8_t** c, size_t sz){
  
 	   if(!*c[i])continue; // skip blank
  
-	   if(*c[i] == *c[i-1]){         //smush         
+	   if(*c[i] == *c[i-1]){         //smush  
+		  moves++; // a smush is a move       
 		  *c[i-1] = *c[i-1] + 1;     // tile value doubles
 		  if(*c[i-1] == 11){ game.won = true; /* hate the 'magic number' 2048 = 2^11*/}
 		  r.points += (1 << *c[i-1]);
@@ -580,7 +591,7 @@ int move_down(void){
    
       for(int row = 0; row < N_ROWS; row++){
 
-		game.board[col][N_ROWS - row - 1] &= 0x1f;
+		game.board[col][N_ROWS - row - 1] &= ~SMUSHED;
       
          pcells[row] = &game.board[col][N_ROWS - row - 1];
       }
@@ -604,7 +615,7 @@ int move_up(void){
 	
 	   for(int row = 0; row < N_ROWS; row++){
  
-		 game.board[col][row] &= 0x1f;
+		 game.board[col][row] &= ~SMUSHED;
 	   
 		  pcells[row] = &game.board[col][row];
 	   }	
@@ -625,7 +636,7 @@ int move_up(void){
 
 		for( int col = 0; col < N_COLS; col++){
 	
-		 game.board[col][row] &= 0x1f;
+		 game.board[col][row] &= ~SMUSHED;
 	   
 		  pcells[col] = &game.board[col][row];
 	   }	
@@ -646,7 +657,7 @@ int move_up(void){
 
 		for( int col = 0; col < N_COLS; col++){
 	
-		 game.board[N_COLS - col - 1][row] &= 0x1f;
+		 game.board[N_COLS - col - 1][row] &= ~SMUSHED;
 	   
 		  pcells[col] = &game.board[N_COLS - col - 1][row];
 	   }	
@@ -717,7 +728,7 @@ int handle_key_press(void){
 			case 0x1B:   /*  \x1B */
 			 getkey();   /* [ */
 			 getkey();   /* A|B|C|D */
-			 printf("Unwanted getkey\n\r");
+			 ffsprintf(f_out, "Unwanted getkey\n\r");
 			 break;
 
 			case 'w':
@@ -754,23 +765,23 @@ int handle_key_press(void){
 			default:
 			valid_key = VK_NONE;
 			n_cells_moved = 0;
-			//printf("Ignoring -%c-\n", key);
+			ffsprintf(f_out, "Ignoring -%c-\n", key);
 			break;
 
 		}//end switch
-		// printf("KEY:%d, moves:%d\n",key, n_cells_moved);
+		 ffsprintf(f_out, "KEY:%d, moves:%d\n",key, n_cells_moved);
 	}//end while
-	// printf("KEY exit:%d\n", n_cells_moved);
+	// ffsprintf(f_out, "KEY exit:%d\n", n_cells_moved);
 	return n_cells_moved;
 }
 
 void cleanup_and_exit() {
-	//printf(ESC "[2J"); // clear screen
+	//ffsprintf(f_out, ESC "[2J"); // clear screen
     disable_raw_mode();
 	restore_cursor();
-   	printf("\x1b[999C\x1b[999B");  //move to bottom of screen (implausably large x and y)
-   	printf("\nGoodbye!\n");
-	if(game.logfile) close(game.logfile);
+   	ffsprintf(f_out, "\x1b[999C\x1b[999B");  //move to bottom of screen (implausably large x and y)
+   	ffsprintf(f_out, "\nGoodbye!\n");
+	if(game.logfile) fclose(game.logfile);
 
     exit(0); // Terminate the program
 }
@@ -818,7 +829,7 @@ int play_2048(void){
 	game.score = 0, game.won = false, game.max_cell = 0, game.width = N_COLS, game.height = N_ROWS;
 	
 	// show splash
-	printf("%s\n\nDo you want to play a game?\n", title);
+	ffsprintf(f_out, "%s\n\nDo you want to play a game?\n", title);
 	
 	// wait for ANY key
 	int resp = read_key();
@@ -826,8 +837,16 @@ int play_2048(void){
 
 
 	// board initially contains 2 populated cells. 
-	insert_new_tile();
-	insert_new_tile();
+//	insert_new_tile();
+//	insert_new_tile();
+
+uint8_t setup[4][4] = { {11,6,5,2},{1,10,7,0},{2,8,5,1},{7,6,3,2} };
+for(int i = 0; i< 4; i++){
+	for( int j = 0; j< 4 ; j++){
+		game.board[i][j] = setup[i][j];
+	}
+}
+
 
 	for(;;){	// loop until game ends
 
@@ -841,20 +860,23 @@ int play_2048(void){
 
 				if(no_moves_left()) {
 					render();// show final state	
-					break; // exit game loop
+					goto game_over; // exit game loop
 				}
 			}
-		}else{
-			printf("no move possible\n");
 		}
+		/*else{
+			ffsprintf(f_out, "no move possible\n");
+		}*/
 	}
-	printf("%s", game_over);
+game_over:
+	ffsprintf(f_out, "%s", game_over);
 
 	return 0;
 }
 void consider_options(int argc, char** argv){ // quik and dirty adding logging option
-	int fd = open( argv[1], O_WRONLY | O_CREAT );
-	game.logfile = fd;
+
+	FILE* f = fopen( argv[1], "w" ); //( argv[1], O_WRONLY | O_CREAT );
+	game.logfile = f;
 }
 int main(int argc, char** argv){
 
