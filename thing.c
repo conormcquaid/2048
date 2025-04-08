@@ -430,101 +430,7 @@ void debug_cell_print(void){
 }
 
 /******************************************************************************************/
-/*
-	move functions: int move_xxxx(int* cells)
-	in : array of game cells. this will be modified if a legal move is made
-	out: the number of cells moved. Returning zero indicates that no move was made
 
-   More complex than necessary?
-*/
-
-/*
-  try a unified move function
-  it should be called for each row and each column, depending on direction
-  e.g. Call move_new(start, end, 0, 0) to work on the zeroth column
-
-  reduced code size at the expense of legibility and maintainability, so, NO
-
-int move_new(int cells[N_COLS][N_ROWS], int row_start, int row_end, int col_start, int col_end){
-
-	int total_score = 0, score = 0;
-	int Δrow = (row_start == row_end) 	? 0
-											: (row_start < row_end) ? 1 : -1;
-	int Δcol = (col_start == col_end) 	? 0
-											: (col_start < col_end) ? 1 : -1;
-
-	// remove gaps - score - remove gaps
-
-	if(!Δcol){
-		for( int row = row_start; row <= row_end - 1; row += Δrow ){
-			if((!cells[row + Δrow][col_start])){ //next cell empty?
-				cells[row + Δrow][col_start] = cells[row][col_start];//move
-				cells[row][col_start] = 0;
-			}
-		}
-		for( int row = row_start; row <= row_end - 1; row += Δrow ){
-			if((cells[row + Δrow][col_start]) == cells[row][col_start]){ //next cell equals current
-				score += (2 * cells[row][col_start]);
-				cells[row + Δrow][col_start] = score; //score
-				total_score += score;
-				cells[row][col_start] = 0;
-			}
-		}
-		for( int row = row_start; row <= row_end - 1; row += Δrow ){
-			if(!(cells[row + Δrow][col_start])){ //next cell empty?
-				cells[row + Δrow][col_start] = cells[row][col_start];//move
-				cells[row][col_start] = 0;
-			}
-		}
-	}else if(!Δrow){
-		for( int col = col_start; col <= col_end - 1; col += Δcol ){
-			if(!(cells[row_start][col + Δcol])){ //next cell empty?
-				cells[row_start][col + Δcol] = cells[row_start][col];//move
-				cells[row_start][col] = 0;
-			}
-		}
-		for( int col = col_start; col <= col_end - 1; col += Δcol ){
-			if((cells[row_start][col + Δcol]) == cells[row_start][col]){ //next cell equals current
-				score += (2 * cells[row_start][col]);
-				cells[row_start][col + Δcol] = score; //score
-				total_score += score;
-				cells[row_start][col] = 0;
-			}
-		}
-		for( int col = col_start; col <= col_end - 1; col += Δcol ){
-			if(!(cells[row_start][col + Δcol])){ //next cell empty?
-				cells[row_start][col + Δcol] = cells[row_start][col];//move
-				cells[row_start][col] = 0;
-			}
-		}
-	}else{
-		perror("move called with bad params");
-	}
-	return total_score;
-}
-
-int collapse_down(int cells[N_COLS][N_ROWS]){
-
-	for(int col = 0; col < N_COLS; col++){
-
-		for(int row = N_ROWS - 1; row >= 2; row --){
-
-			if( !cells[row][col] ){  			//if cell empty
-				for(int r = row; r >= 1; r--){ 	// move down all above
-					cells[r][col] = cells[r-1][col];
-				}
-			}
-		}
-	}
-	return 99;
-
-}*/
-
-/*
-	All four move options are reflections in either ascending/descending order or rows vs columns
-
-	Coded as separate functions for speed and laziness
-*/
 
 typedef struct move_result{
 
@@ -824,9 +730,23 @@ char * you_win = "\
    \\_/\\_/  |___|_| \\_|\n\r\
 ";
 
+void endgame(void){
+
+	ffsprintf(f_out, "%s", you_win);
+	ffsprintf(f_out, "Would you like to try for 4096 and beyond?");
+
+	int resp = read_key();
+	if(resp == 'N' || resp == 'n'){ 
+		ffsprintf(f_out, "Thanks for playing. Goodbye!");
+		exit(0); 
+	}
+}
+
 int play_2048(void){
 	
 	game.score = 0, game.won = false, game.max_cell = 0, game.width = N_COLS, game.height = N_ROWS;
+
+	bool once = true;
 	
 	// show splash
 	ffsprintf(f_out, "%s\n\nDo you want to play a game?\n", title);
@@ -837,22 +757,19 @@ int play_2048(void){
 
 
 	// board initially contains 2 populated cells. 
-//	insert_new_tile();
-//	insert_new_tile();
+	insert_new_tile();
+	insert_new_tile();
 
-uint8_t setup[4][4] = { {11,6,5,2},{1,10,7,0},{2,8,5,1},{7,6,3,2} };
-for(int i = 0; i< 4; i++){
-	for( int j = 0; j< 4 ; j++){
-		game.board[i][j] = setup[i][j];
-	}
-}
-
-
-	for(;;){	// loop until game ends
+	while(1){	// loop until game ends
 
 		render();
 
 		if( handle_key_press() > 0){ //got a keypress that results in some movement of a tile
+
+			if(once && game.won){
+				once = false;
+				endgame();
+			}
 			
 			if(!insert_new_tile()){
 
