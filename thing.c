@@ -203,6 +203,22 @@ render(void)
 DIsplay the game board
 
 ************************************************/
+// ╔══════════════════════╗
+// ║ Score: 4148          ║
+// ╠══════════════════════╣
+// ║ ┌───┐┌───┐┌───┐┌───┐ ║
+// ║ │512││ 32││ 4 ││ 2 │ ║
+// ║ └───┘└───┘└───┘└───┘ ║
+// ║ ┌───┐┌───┐┌───┐┌───┐ ║
+// ║ │ 8 ││ 2 ││ 2 ││ 4 │ ║
+// ║ └───┘└───┘└───┘└───┘ ║
+// ║ ┌───┐                ║
+// ║ │ 2 │                ║
+// ║ └───┘                ║
+// ║ ┌───┐                ║
+// ║ │ 2 │                ║
+// ║ └───┘                ║
+// ╚══════════════════════╝
 
 void render(void){
 
@@ -214,25 +230,26 @@ void render(void){
 	cursor_to(1,1);
 
 	//top row
-	ffsprintf(f_out,  BORDER_COLOR "\u2554\u2550");
-	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
-	ffsprintf(f_out, "\u2550\u2557");
+	ffsprintf(f_out,  BORDER_COLOR "╔══════════════════════╗");
+	// ffsprintf(f_out,  BORDER_COLOR "\u2554\u2550");
+	// for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	// ffsprintf(f_out, "\u2550\u2557");
 	//score line
 	cursor_to(2, 1);
 	ffsprintf(f_out,  BORDER_COLOR );
 	//ffsprintf(f_out, "\u2551" ESC "[7mScore: %d" ESC "[m", game.score); cursor_to(2, 23);ffsprintf(f_out, " \u2551");
-	ffsprintf(f_out, "\u2551 Score: %d", game.score); cursor_to(2, 23);ffsprintf(f_out, " \u2551");
+	ffsprintf(f_out, "║ Score: %d", game.score); cursor_to(2, 23);ffsprintf(f_out, " ║");
 	
 	// separator
 	cursor_to(3,1);
-	ffsprintf(f_out,  BORDER_COLOR "\u2560\u2550");
-	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
-	ffsprintf(f_out, "\u2550\u2563");
+	ffsprintf(f_out,  BORDER_COLOR "╠══════════════════════╣");
+	// for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	// ffsprintf(f_out, "\u2550\u2563");
 	
 	cursor_to(4,1);
 	for(row = 0; row < game.height; row++){
 		//left wall
-		ffsprintf(f_out,  "\u2551 ");
+		ffsprintf(f_out,  "║ ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -248,13 +265,13 @@ void render(void){
 			//if(inv){
 			//	ffsprintf(f_out, ESC "[7m%s" ESC "[m", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
 			//}else{
-				ffsprintf(f_out, "%s", c ? "\u250C\u2500\u2500\u2500\u2510" : "     " );
+				ffsprintf(f_out, "%s", c ? "┌───┐" : "     " );
 			//}
 
 		}
 
 		//right wall / left wall
-		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r\u2551 ");
+		ffsprintf(f_out, BORDER_COLOR " ║\n\r║ ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -266,7 +283,7 @@ void render(void){
 			if(c < 0){ c = 0; }
 			if(c > MAX_SYMBOL){ c = MAX_SYMBOL; }
 
-			char* n = c ? "\u2502" : " ";
+			char* n = c ? "│" : " ";
 			ffsprintf(f_out,  "%s", symbols[c][SYM_COLOR]);
 			// if(inv){
 			// 	ffsprintf(f_out, 	ESC "[7m%s%s%s" ESC "[m", n, c ? symbols[c][SYM_LEGEND] : "   ", n);
@@ -283,7 +300,7 @@ void render(void){
 		}
 
 		//right wall / left wall
-		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r\u2551 ");
+		ffsprintf(f_out, BORDER_COLOR " ║\n\r║ ");
 
 		for(col = 0; col < game.width; col++){
 
@@ -299,18 +316,20 @@ void render(void){
 			//if(inv){
 			//	ffsprintf(f_out, 	ESC "[7m%s" ESC "[m",  c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
 			//}else{
-				ffsprintf(f_out, "%s", c ? "\u2514\u2500\u2500\u2500\u2518" : "     ");
+				ffsprintf(f_out, "%s", c ? "└───┘" : "     ");
 			//}
 
 		}
 
 		//right wall : end of row
-		ffsprintf(f_out, BORDER_COLOR " \u2551\n\r");
+		ffsprintf(f_out, BORDER_COLOR " ║\n\r");
 	}
 	//bottom row
-	ffsprintf(f_out, BORDER_COLOR "\u255A\u2550");
-	for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
-	ffsprintf(f_out, "\u2550\u255D");
+	ffsprintf(f_out, BORDER_COLOR "╚══════════════════════╝");
+
+	// ffsprintf(f_out, BORDER_COLOR "\u255A\u2550");
+	// for(col = 0; col < game.width; col++){ ffsprintf(f_out, "\u2550\u2550\u2550\u2550\u2550"); }
+	// ffsprintf(f_out, "\u2550\u255D");
 
 	// for cell in board: uninvert
 	// for(col = 0; col < game.width; col++){
@@ -803,6 +822,7 @@ int main(int argc, char** argv){
 	srandom( (unsigned)time(NULL));
 
 	enable_raw_mode();
+
 	atexit(cleanup_and_exit); // Register cleanup function
 
 	play_2048();	
